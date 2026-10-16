@@ -92,6 +92,8 @@ button { cursor: pointer; }
 .tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
 .tabs button { border: 0; background: transparent; padding: 8px 14px; border-radius: 999px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.tabs .inicio { padding: 8px 10px; }
+.tabs .inicio svg { width: 20px; height: 20px; }
 .badge { background: var(--amber-edge); color: #2b1d00; border-radius: 999px; font-size: 0.75rem; padding: 0 7px; min-width: 20px; text-align: center; }
 
 .banner { border-radius: var(--r); padding: 10px 12px; font-size: 0.9rem; border: 1px solid var(--amber-edge); background: var(--amber-bg); color: var(--amber-ink); }
@@ -197,12 +199,16 @@ details[open] summary { margin-bottom: 8px; }
   <header class="top">
     <h1>¿Vale la pena?</h1>
     <nav class="tabs" role="tablist" aria-label="Secciones">
+      <button id="btn-inicio" class="inicio" aria-label="Inicio" title="Inicio"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11L12 4l8.5 7M6 9.5V20h4.5v-5.5h3V20H18V9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <button id="tab-evaluar" role="tab" aria-selected="true">Evaluar</button>
       <button id="tab-historial" role="tab" aria-selected="false">Historial <span id="badge" class="badge" hidden>0</span></button>
     </nav>
   </header>
 
-  <div id="aviso" class="banner" hidden></div>
+  <div id="aviso" class="banner" role="status" hidden></div>
+  <div id="confirma-inicio" class="banner err" hidden>Tienes cambios sin guardar. ¿Descartarlos y volver al inicio? El historial no se toca.
+    <div class="row" style="margin-top:8px"><button id="btn-inicio-si" class="btn danger">Descartar y volver</button><button id="btn-inicio-no" class="btn sec">Seguir editando</button></div>
+  </div>
 
   <!-- EVALUAR -->
   <section id="vista-evaluar" class="wrap" style="gap:14px">
@@ -692,7 +698,7 @@ var REGISTROS = (function () {
   function nombreModo(m) { return { negocio: "Trabajo", personal: "Compras personales", tareas: "Tareas" }[m] || m; }
 
   // origen: la PRUEBA de Trabajo que abrió "¿Cuándo lo hago?". Mientras exista, Tareas pregunta solo la urgencia.
-  var estado = { modo: null, respuestas: [null, null, null, null, null], anterior: null, origen: null, resultado: null, guardado: null };
+  var estado = { modo: null, respuestas: [null, null, null, null, null], anterior: null, origen: null, resultado: null, guardado: null, nombreBase: "" };
   function visibles() {
     var n = estado.modo ? MOTOR.PREGUNTAS[estado.modo].length : 0, a = [];
     for (var i = 0; i < n; i++) if (!(estado.origen && i < 2)) a.push(i);
@@ -706,11 +712,30 @@ var REGISTROS = (function () {
   var seleccion = null;  // id del registro abierto en el historial
   var confirmarBorrar = null;
 
-  function aviso(txt, tipo) {
+  // fijo: el aviso de que no se puede guardar sigue siendo cierto en cualquier pantalla; los demás se limpian.
+  var avisoFijo = null;
+  function aviso(txt, tipo, fijo) {
     var a = $("aviso");
-    if (!txt) { a.hidden = true; return; }
+    if (fijo) avisoFijo = { txt: txt, tipo: tipo };
+    if (!txt) { if (avisoFijo) return aviso(avisoFijo.txt, avisoFijo.tipo); a.hidden = true; return; }
     a.className = "banner" + (tipo ? " " + tipo : "");
     a.textContent = txt; a.hidden = false;
+  }
+  function limpiarAvisos() { aviso(""); $("confirma-inicio").hidden = true; }
+
+  /* Cambios que se perderían al volver al inicio: respuestas o nombre de una evaluación sin guardar,
+     o un formulario (fecha, prueba, nota) editado y no guardado. */
+  function hayCambios() {
+    if (!estado.guardado && estado.modo) {
+      if (visibles().some(function (i) { return estado.respuestas[i] !== null; })) return true;
+      if ($("nombre").value.trim() !== estado.nombreBase) return true;
+    } else if (!estado.guardado && $("nombre").value.trim()) return true;
+    return Array.prototype.some.call(document.querySelectorAll("[data-f], #d-nota, #nota"), function (el) { return el.value !== el.defaultValue; });
+  }
+  function irAInicio() {
+    seleccion = null; confirmarBorrar = null;
+    nuevaEvaluacion(false); cambiarVista("evaluar");
+    window.scrollTo({ top: 0 });
   }
 
   /* ---------- Evaluar ---------- */
@@ -833,7 +858,7 @@ var REGISTROS = (function () {
     if (ya) { seleccion = ya.id; confirmarBorrar = null; cambiarVista("historial"); var c = $("det-card"); if (c) c.scrollIntoView({ block: "start" }); return; }
     estado.modo = "tareas"; estado.origen = prueba; estado.anterior = null;
     estado.respuestas = ["yes", null, null, null];
-    $("modo-tareas").checked = true; $("nombre").value = prueba.nombre;
+    $("modo-tareas").checked = true; $("nombre").value = prueba.nombre; estado.nombreBase = prueba.nombre.trim();
     $("titulo-cuando").hidden = false;
     var info = $("reeval-info");
     info.textContent = "«" + prueba.nombre + "» quedó guardado como Prueba de " + nombreModo("negocio") + ". La importancia ya está en Sí: responde solo qué tan urgente es.";
@@ -868,7 +893,7 @@ var REGISTROS = (function () {
   }
 
   function nuevaEvaluacion(conservarModo) {
-    salirDeCuando();
+    salirDeCuando(); limpiarAvisos(); estado.nombreBase = "";
     estado.respuestas = vacias(estado.modo); estado.anterior = null;
     if (!conservarModo) { estado.modo = null; $("modo-negocio").checked = false; $("modo-personal").checked = false; $("modo-tareas").checked = false; }
     $("nombre").value = ""; $("reeval-info").hidden = true;
@@ -881,7 +906,7 @@ var REGISTROS = (function () {
     salirDeCuando();
     estado.modo = reg.modo; estado.origen = origen; estado.respuestas = origen ? ["yes", null, null, null] : vacias(estado.modo); estado.anterior = reg;
     $("titulo-cuando").hidden = !origen;
-    $("modo-" + reg.modo).checked = true; $("nombre").value = reg.nombre;
+    $("modo-" + reg.modo).checked = true; $("nombre").value = reg.nombre; estado.nombreBase = reg.nombre.trim();
     var info = $("reeval-info");
     info.textContent = "Reevaluando «" + reg.nombre + "» (antes: " + MOTOR.RESULTADOS[reg.resultado].etiqueta + ", " + fechaCorta(reg.creado_en) + "). La evaluación anterior se conserva.";
     info.hidden = false;
@@ -974,7 +999,7 @@ var REGISTROS = (function () {
 
   function actualizar(id, cambios, okMsg) {
     var r = registros.filter(function (x) { return x.id === id; })[0];
-    if (!r || !store) return Promise.resolve(false);
+    if (!r || !store) { aviso("No se guardó el cambio: el historial no está disponible.", "err"); return Promise.resolve(false); }
     var nuevo = JSON.parse(JSON.stringify(r));
     Object.keys(cambios).forEach(function (k) { nuevo[k] = cambios[k]; });
     nuevo.actualizado_en = new Date().toISOString();
@@ -982,7 +1007,7 @@ var REGISTROS = (function () {
       registros = registros.map(function (x) { return x.id === id ? leido : x; });
       if (estado.guardado && estado.guardado.id === id) { estado.guardado = leido; }
       aviso(okMsg || "", okMsg ? "ok" : "");
-      return true;
+      return leido; // el registro releído del almacenamiento, para confirmar lo que quedó
     }).catch(function (e) { aviso(mensajeError(e, "No se guardó el cambio."), "err"); return false; });
   }
 
@@ -1018,7 +1043,13 @@ var REGISTROS = (function () {
   function cambiarVista(v) {
     $("vista-evaluar").hidden = v !== "evaluar"; $("vista-historial").hidden = v !== "historial";
     $("tab-evaluar").setAttribute("aria-selected", v === "evaluar"); $("tab-historial").setAttribute("aria-selected", v === "historial");
+    limpiarAvisos();
     if (v === "historial") pintarHistorial();
+  }
+  /* Mientras guarda: botón apagado y "Guardando…". Devuelve cómo dejarlo como estaba si falla. */
+  function guardandoBoton(t) {
+    var txt = t.textContent; t.disabled = true; t.textContent = "Guardando…";
+    return function () { t.disabled = false; t.textContent = txt; };
   }
 
   $("tab-evaluar").addEventListener("click", function () { cambiarVista("evaluar"); });
@@ -1043,15 +1074,32 @@ var REGISTROS = (function () {
   document.addEventListener("click", function (e) {
     var t = e.target.closest("button");
     if (!t) return;
+    if (t.id === "btn-inicio") {
+      if (hayCambios()) { $("confirma-inicio").hidden = false; window.scrollTo({ top: 0 }); } else irAInicio();
+      return;
+    }
+    if (t.id === "btn-inicio-si") return irAInicio();
+    if (t.id === "btn-inicio-no") { $("confirma-inicio").hidden = true; return; }
     if (t.id === "btn-guardar") return guardarEvaluacion();
     if (t.id === "btn-cambiar") { limpiarResultado(); $("preguntas").scrollIntoView({ behavior: "smooth" }); return; }
     if (t.id === "btn-nueva") return nuevaEvaluacion(false);
     if (t.id === "btn-ir") { seleccion = estado.guardado.id; cambiarVista("historial"); var d = $("detalle"); if (d) d.scrollIntoView({ block: "start" }); return; }
     if (t.dataset.accion === "piloto") {
-      return actualizar(t.dataset.id, { piloto: { objetivo: campo(t, "objetivo").slice(0, 300), limite: campo(t, "limite").slice(0, 120), revisar_en: campo(t, "revisar_en") || null } }, "Prueba guardada.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
+      var listoP = guardandoBoton(t);
+      return actualizar(t.dataset.id, { piloto: { objetivo: campo(t, "objetivo").slice(0, 300), limite: campo(t, "limite").slice(0, 120), revisar_en: campo(t, "revisar_en") || null } }, "Prueba guardada.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } else listoP(); });
     }
     if (t.dataset.accion === "seguimiento") {
-      return actualizar(t.dataset.id, { seguimiento: { responsable: campo(t, "responsable").slice(0, 120), fecha: campo(t, "fecha") || null } }, "Guardado.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
+      // Primero se confirma lo guardado (releído del almacenamiento); recién ahí se abre su detalle en el Historial.
+      // Si falla, el formulario queda con lo escrito y no se navega.
+      var fecha = campo(t, "fecha") || null, idSeg = t.dataset.id, listoS = guardandoBoton(t);
+      return actualizar(idSeg, { seguimiento: { responsable: campo(t, "responsable").slice(0, 120), fecha: fecha } }).then(function (leido) {
+        if (!leido) return listoS();
+        if (!leido.seguimiento || leido.seguimiento.fecha !== fecha) { listoS(); return aviso("No se pudo confirmar que la fecha quedó guardada. Vuelve a intentar.", "err"); }
+        if (estado.guardado) pintarResultado();
+        seleccion = idSeg; confirmarBorrar = null; cambiarVista("historial");
+        aviso("Evaluación guardada. Fecha: " + (fecha ? fechaCorta(fecha) : "sin fecha"), "ok");
+        var c = $("det-card"); if (c) c.scrollIntoView({ block: "start" });
+      });
     }
     var grupo = t.parentElement && t.parentElement.dataset.campo ? t.parentElement : null;
     if (grupo && t.dataset.valor) {
@@ -1062,7 +1110,7 @@ var REGISTROS = (function () {
     if (t.dataset.cuando) { var rp = registros.filter(function (x) { return x.id === t.dataset.cuando; })[0]; if (rp) abrirCuando(rp); return; }
     if (t.dataset.abrir) { seleccion = t.dataset.abrir; confirmarBorrar = null; pintarDetalle(); var c = $("det-card"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     if (t.hasAttribute("data-cerrar")) { seleccion = null; pintarDetalle(); return; }
-    if (t.dataset.nota) return actualizar(t.dataset.nota, { nota: $("d-nota").value.trim().slice(0, 2000) }, "Nota guardada.").then(function (ok) { if (ok) pintarHistorial(); });
+    if (t.dataset.nota) { var listoN = guardandoBoton(t); return actualizar(t.dataset.nota, { nota: $("d-nota").value.trim().slice(0, 2000) }, "Nota guardada.").then(function (ok) { if (ok) pintarHistorial(); else listoN(); }); }
     if (t.dataset.reevaluar) { var r = registros.filter(function (x) { return x.id === t.dataset.reevaluar; })[0]; if (r && REGISTROS.puedeReevaluar(r, hoy())) reevaluar(r); return; }
     if (t.dataset.archivar) { var ra = registros.filter(function (x) { return x.id === t.dataset.archivar; })[0]; return actualizar(ra.id, { archivado: !ra.archivado }, ra.archivado ? "Sacado de archivados." : "Archivado.").then(function (ok) { if (ok) pintarHistorial(); }); }
     if (t.dataset.borrar) { confirmarBorrar = t.dataset.borrar; pintarDetalle(); return; }
@@ -1114,7 +1162,7 @@ var REGISTROS = (function () {
       window.addEventListener("storage", function () { store.leerTodo().then(function (l) { registros = l.map(REGISTROS.validar).filter(Boolean); pintarHistorial(); }); });
     } catch (e) {
       store = null;
-      aviso("Este navegador no deja guardar (¿modo privado?). Puedes evaluar, pero el historial no se va a guardar.", "err");
+      aviso("Este navegador no deja guardar (¿modo privado?). Puedes evaluar, pero el historial no se va a guardar.", "err", true);
       pintarHistorial();
     }
     return;
