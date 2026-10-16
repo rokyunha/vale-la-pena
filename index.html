@@ -792,22 +792,26 @@ var REGISTROS = (function () {
     box.innerHTML = html; box.hidden = false;
   }
 
-  function formPiloto(reg) {
-    var p = reg.piloto || {};
+  /* Estos formularios aparecen en dos lugares a la vez: bajo el resultado (vista Evaluar, que queda oculta
+     pero en la página) y en el detalle del historial. "donde" ("r" o "d") hace únicos los ids, y al guardar
+     se leen los campos de la tarjeta del botón tocado, nunca por id global. */
+  function formPiloto(reg, donde) {
+    var p = reg.piloto || {}, k = donde + "-p-";
     return '<div class="card"><h3>Define la prueba</h3>' +
-      '<div class="field"><label for="p-obj">Objetivo de la prueba</label><input id="p-obj" class="txt" maxlength="300" value="' + esc(p.objetivo || "") + '" placeholder="Ej.: bajar a la mitad el tiempo de cuadrar caja"></div>' +
-      '<div class="field"><label for="p-lim">Límite de tiempo</label><input id="p-lim" class="txt" maxlength="120" value="' + esc(p.limite || "") + '" placeholder="Ej.: 2 semanas, máximo 1 hora al día"></div>' +
-      '<div class="field"><label for="p-rev">Fecha de revisión</label><input id="p-rev" type="date" class="txt" value="' + esc(p.revisar_en || "") + '"></div>' +
-      '<button id="btn-piloto" class="btn" data-id="' + esc(reg.id) + '">Guardar la prueba</button></div>';
+      '<div class="field"><label for="' + k + 'obj">Objetivo de la prueba</label><input id="' + k + 'obj" data-f="objetivo" class="txt" maxlength="300" value="' + esc(p.objetivo || "") + '" placeholder="Ej.: bajar a la mitad el tiempo de cuadrar caja"></div>' +
+      '<div class="field"><label for="' + k + 'lim">Límite de tiempo</label><input id="' + k + 'lim" data-f="limite" class="txt" maxlength="120" value="' + esc(p.limite || "") + '" placeholder="Ej.: 2 semanas, máximo 1 hora al día"></div>' +
+      '<div class="field"><label for="' + k + 'rev">Fecha de revisión</label><input id="' + k + 'rev" data-f="revisar_en" type="date" class="txt" value="' + esc(p.revisar_en || "") + '"></div>' +
+      '<button class="btn" data-accion="piloto" data-id="' + esc(reg.id) + '">Guardar la prueba</button></div>';
   }
 
-  function formSeguimiento(reg) {
-    var s = reg.seguimiento || {}, delegar = reg.resultado === "DELEGAR";
+  function formSeguimiento(reg, donde) {
+    var s = reg.seguimiento || {}, delegar = reg.resultado === "DELEGAR", k = donde + "-s-";
     return '<div class="card"><h3>' + (delegar ? "¿A quién se lo pasas?" : "¿Cuándo lo haces?") + "</h3>" +
-      (delegar ? '<div class="field"><label for="s-resp">Responsable</label><input id="s-resp" class="txt" maxlength="120" value="' + esc(s.responsable || "") + '" placeholder="Ej.: nombre de quien lo hará"></div>' : "") +
-      '<div class="field"><label for="s-fecha">' + (delegar ? "Fecha para revisar que esté hecho" : "Fecha") + '</label><input id="s-fecha" type="date" class="txt" value="' + esc(s.fecha || "") + '"></div>' +
-      '<button id="btn-seguimiento" class="btn" data-id="' + esc(reg.id) + '">Guardar</button></div>';
+      (delegar ? '<div class="field"><label for="' + k + 'resp">Responsable</label><input id="' + k + 'resp" data-f="responsable" class="txt" maxlength="120" value="' + esc(s.responsable || "") + '" placeholder="Ej.: nombre de quien lo hará"></div>' : "") +
+      '<div class="field"><label for="' + k + 'fecha">' + (delegar ? "Fecha para revisar que esté hecho" : "Fecha") + '</label><input id="' + k + 'fecha" data-f="fecha" type="date" class="txt" value="' + esc(s.fecha || "") + '"></div>' +
+      '<button class="btn" data-accion="seguimiento" data-id="' + esc(reg.id) + '">Guardar</button></div>';
   }
+  function campo(boton, nombre) { var el = boton.closest(".card").querySelector('[data-f="' + nombre + '"]'); return el ? el.value.trim() : ""; }
 
   function botonesDecision(reg) {
     var pregunta = { negocio: "¿Qué hiciste al final?", personal: "¿Lo compraste?", tareas: "¿Cómo terminó?" }[reg.modo];
@@ -817,9 +821,9 @@ var REGISTROS = (function () {
   }
 
   function extraTrasGuardar(reg) {
-    if (reg.resultado === "PRUEBA") return formPiloto(reg);
+    if (reg.resultado === "PRUEBA") return formPiloto(reg, "r");
     if (reg.resultado === "COMPRA_RAZONABLE") return botonesDecision(reg);
-    if (reg.resultado === "HACER" || reg.resultado === "PROGRAMAR" || reg.resultado === "DELEGAR") return formSeguimiento(reg);
+    if (reg.resultado === "HACER" || reg.resultado === "PROGRAMAR" || reg.resultado === "DELEGAR") return formSeguimiento(reg, "r");
     return "";
   }
 
@@ -950,9 +954,9 @@ var REGISTROS = (function () {
       var tarea = REGISTROS.tareaDe(registros, r.id);
       h += tarea ? '<p class="small">¿Cuándo lo hago?: <button class="link" data-abrir="' + esc(tarea.id) + '">' + esc(MOTOR.RESULTADOS[tarea.resultado].etiqueta) + (tarea.seguimiento && tarea.seguimiento.fecha ? ", " + fechaCorta(tarea.seguimiento.fecha) : "") + "</button></p>"
         : '<button class="btn" data-cuando="' + esc(r.id) + '">' + esc(BOTON.PRUEBA) + "</button>";
-      h += formPiloto(r);
+      h += formPiloto(r, "d");
     }
-    if (r.resultado === "HACER" || r.resultado === "PROGRAMAR" || r.resultado === "DELEGAR") h += formSeguimiento(r);
+    if (r.resultado === "HACER" || r.resultado === "PROGRAMAR" || r.resultado === "DELEGAR") h += formSeguimiento(r, "d");
     if (r.modo === "tareas") h += matriz(r.resultado);
     h += botonesDecision(r).replace("<p class=\"small muted\">Tu decisión queda separada de la recomendación. Puedes registrarla después desde el historial.</p>", "");
     if (r.modo !== "tareas") h += '<div class="card"><span class="lbl">¿Valió la pena? (opcional)</span><div class="choice" data-campo="valoracion" data-id="' + esc(r.id) + '">' +
@@ -1043,13 +1047,11 @@ var REGISTROS = (function () {
     if (t.id === "btn-cambiar") { limpiarResultado(); $("preguntas").scrollIntoView({ behavior: "smooth" }); return; }
     if (t.id === "btn-nueva") return nuevaEvaluacion(false);
     if (t.id === "btn-ir") { seleccion = estado.guardado.id; cambiarVista("historial"); var d = $("detalle"); if (d) d.scrollIntoView({ block: "start" }); return; }
-    if (t.id === "btn-piloto") {
-      var obj = $("p-obj").value.trim(), lim = $("p-lim").value.trim(), rev = $("p-rev").value || null;
-      return actualizar(t.dataset.id, { piloto: { objetivo: obj.slice(0, 300), limite: lim.slice(0, 120), revisar_en: rev } }, "Prueba guardada.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
+    if (t.dataset.accion === "piloto") {
+      return actualizar(t.dataset.id, { piloto: { objetivo: campo(t, "objetivo").slice(0, 300), limite: campo(t, "limite").slice(0, 120), revisar_en: campo(t, "revisar_en") || null } }, "Prueba guardada.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
     }
-    if (t.id === "btn-seguimiento") {
-      var resp = $("s-resp") ? $("s-resp").value.trim().slice(0, 120) : "";
-      return actualizar(t.dataset.id, { seguimiento: { responsable: resp, fecha: $("s-fecha").value || null } }, "Guardado.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
+    if (t.dataset.accion === "seguimiento") {
+      return actualizar(t.dataset.id, { seguimiento: { responsable: campo(t, "responsable").slice(0, 120), fecha: campo(t, "fecha") || null } }, "Guardado.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
     }
     var grupo = t.parentElement && t.parentElement.dataset.campo ? t.parentElement : null;
     if (grupo && t.dataset.valor) {
