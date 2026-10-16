@@ -101,7 +101,8 @@ button { cursor: pointer; }
 .seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .seg label { display: block; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
-.seg span { display: flex; align-items: center; justify-content: center; height: 100%; line-height: 1.2; text-align: center; padding: 12px 6px; border-radius: var(--r); border: 1.5px solid var(--line); background: var(--surface); font-weight: 600; }
+.seg label > span { display: flex; flex-direction: column; gap: 3px; align-items: center; justify-content: center; height: 100%; line-height: 1.2; text-align: center; padding: 12px 6px; border-radius: var(--r); border: 1.5px solid var(--line); background: var(--surface); font-weight: 600; }
+.seg small { font-weight: 500; font-size: 0.74rem; opacity: 0.85; }
 .seg input:checked + span { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 .seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
 
@@ -205,11 +206,12 @@ details[open] summary { margin-bottom: 8px; }
 
   <!-- EVALUAR -->
   <section id="vista-evaluar" class="wrap" style="gap:14px">
+    <h2 id="titulo-cuando" hidden>¿Cuándo lo hago?</h2>
     <div id="reeval-info" class="banner ok" hidden></div>
     <div class="seg" role="radiogroup" aria-label="Qué estás evaluando">
-      <label><input type="radio" name="modo" id="modo-negocio" value="negocio"><span id="lbl-negocio">Trabajo</span></label>
-      <label><input type="radio" name="modo" id="modo-personal" value="personal"><span>Compras personales</span></label>
-      <label><input type="radio" name="modo" id="modo-tareas" value="tareas"><span>Tareas</span></label>
+      <label><input type="radio" name="modo" id="modo-negocio" value="negocio"><span><span id="lbl-negocio">Trabajo</span><small>¿Vale la pena incorporarlo?</small></span></label>
+      <label><input type="radio" name="modo" id="modo-personal" value="personal"><span>Compras personales<small>¿Vale la pena comprarlo?</small></span></label>
+      <label><input type="radio" name="modo" id="modo-tareas" value="tareas"><span>Tareas<small>¿Cuándo lo hago?</small></span></label>
     </div>
     <div class="field">
       <label for="nombre">¿Qué estás evaluando?</label>
@@ -260,7 +262,7 @@ details[open] summary { margin-bottom: 8px; }
 <script id="motor">
 /* Las reglas del filtro. Función pura: no toca la pantalla ni el almacenamiento. */
 var MOTOR = (function () {
-  var VERSION_REGLAS = "2026-10-15.2";
+  var VERSION_REGLAS = "2026-10-16.1";
   var VALORES = ["yes", "unknown", "no"];
   // Tareas usa solo Sí y No: la matriz de Eisenhower tiene dos opciones por eje.
   var VALORES_MODO = { negocio: VALORES, personal: VALORES, tareas: ["yes", "no"] };
@@ -268,7 +270,7 @@ var MOTOR = (function () {
   var PREGUNTAS = {
     negocio: [
       "¿Esto me resuelve un problema que tengo hoy?",
-      "¿Esto es una prioridad para mi trabajo ahora?",
+      "¿Esto aporta a una meta importante?",
       "¿Necesito esto porque lo que ya tengo no me sirve para resolverlo?",
       "¿Voy a ganar más de lo que me cuesta en plata y tiempo?",
       "¿Puedo probarlo sin descuidar lo que ya estoy haciendo?"
@@ -291,7 +293,7 @@ var MOTOR = (function () {
   var MOTIVO_NO = {
     negocio: [
       "No resuelve un problema que tengas hoy",
-      "No es una prioridad para tu trabajo ahora",
+      "No aporta a una meta importante",
       "Puedes resolverlo con lo que ya tienes",
       "La mejora no compensa el costo en plata y tiempo",
       "Probarlo te haría descuidar lo que ya estás haciendo"
@@ -308,7 +310,7 @@ var MOTOR = (function () {
   var MOTIVO_DUDA = {
     negocio: [
       "No tienes claro si resuelve un problema que tengas hoy",
-      "No tienes claro si es una prioridad para tu trabajo ahora",
+      "No tienes claro si aporta a una meta importante",
       "No tienes claro si lo que ya tienes te sirve para resolverlo",
       "No tienes claro si vas a ganar más de lo que cuesta en plata y tiempo",
       "No tienes claro si puedes probarlo sin descuidar lo que ya estás haciendo"
@@ -342,15 +344,22 @@ var MOTOR = (function () {
     tareas: ["HACER", "PROGRAMAR", "DELEGAR", "ELIMINAR"]
   };
 
-  function completa(modo, r) {
+  /* opciones.importante: la tarea viene de una PRUEBA de Trabajo, así que la importancia ya es Sí.
+     La 1 queda en Sí (es la pregunta 2 de Trabajo) y la 2 no se pregunta (null). */
+  function completa(modo, r, opciones) {
     if (!PREGUNTAS[modo] || !Array.isArray(r) || r.length !== PREGUNTAS[modo].length) return false;
-    for (var i = 0; i < r.length; i++) if (VALORES_MODO[modo].indexOf(r[i]) < 0) return false;
+    var dada = modo === "tareas" && !!opciones && opciones.importante === true;
+    if (dada && r[0] !== "yes") return false;
+    for (var i = 0; i < r.length; i++) {
+      if (dada && i === 1 && r[i] === null) continue;
+      if (VALORES_MODO[modo].indexOf(r[i]) < 0) return false;
+    }
     return true;
   }
 
   /* Tareas: importante si la 1 o la 2 es Sí; urgente si la 3 o la 4 es Sí. */
   var CUADRANTES = {
-    HACER:     { motivo: "Es importante y urgente", accion: "Hazlo tú, hoy." },
+    HACER:     { motivo: "Es importante y urgente", accion: "Ponle fecha y hazlo antes de que venza." },
     PROGRAMAR: { motivo: "Es importante, pero no urgente", accion: "Ponle fecha en tu agenda." },
     DELEGAR:   { motivo: "Es urgente, pero no es importante para tu meta", accion: "Pásaselo a alguien y define cuándo revisarlo." },
     ELIMINAR:  { motivo: "No es importante ni urgente", accion: "Sácalo de tu lista." }
@@ -372,8 +381,8 @@ var MOTOR = (function () {
   }
 
   /* Devuelve el resultado, o lanza un error si la evaluación está incompleta. */
-  function evaluar(modo, r) {
-    if (!completa(modo, r)) throw new Error("evaluacion_incompleta");
+  function evaluar(modo, r, opciones) {
+    if (!completa(modo, r, opciones)) throw new Error("evaluacion_incompleta");
     if (modo === "tareas") return evaluarTarea(r);
     var c = null; // {codigo, pregunta (índice que decide), accion, revisar_dias}
     if (modo === "negocio") {
@@ -382,7 +391,7 @@ var MOTOR = (function () {
       else if (r[3] === "no") c = { codigo: "NO_AVANZAR", pregunta: 3, accion: "Archívalo por ahora.", revisar_dias: null };
       else if (r[4] === "no") c = { codigo: "PAUSA", pregunta: 4, accion: "Guárdalo para revisarlo en 30 días.", revisar_dias: 30 };
       else if (primera(r, "unknown", 0, 4) >= 0) c = { codigo: "ACLARA", pregunta: primera(r, "unknown", 0, 4), accion: "Resuelve esa duda con una investigación acotada: máximo 10 minutos.", revisar_dias: null };
-      else c = { codigo: "PRUEBA", pregunta: null, accion: "Define un objetivo y un límite de tiempo para el piloto.", revisar_dias: null };
+      else c = { codigo: "PRUEBA", pregunta: null, accion: "Vale la pena probarlo. Ponle fecha ahora.", revisar_dias: null };
     } else {
       if (r[3] === "no") c = { codigo: "NO_COMPRAR_AHORA", pregunta: 3, accion: "Posterga la compra.", revisar_dias: null };
       else if (primera(r, "no", 0, 2) >= 0) c = { codigo: "NO_COMPRAR_AHORA", pregunta: primera(r, "no", 0, 2), accion: "Archívalo por ahora.", revisar_dias: null };
@@ -452,10 +461,12 @@ var REGISTROS = (function () {
     return "ev-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
   }
 
-  function crear(modo, nombre, respuestas, ahora, anteriorId) {
+  /* origenId: la PRUEBA de Trabajo de la que sale esta tarea ("¿Cuándo lo hago?"). */
+  function crear(modo, nombre, respuestas, ahora, anteriorId, origenId) {
     var nom = String(nombre || "").trim();
     if (!nom) throw new Error("falta_nombre");
-    var res = MOTOR.evaluar(modo, respuestas); // lanza si está incompleta
+    if (origenId && modo !== "tareas") throw new Error("origen_solo_tareas");
+    var res = MOTOR.evaluar(modo, respuestas, origenId ? { importante: true } : null); // lanza si está incompleta
     var hoy = fechaLocal(ahora);
     return {
       id: nuevoId(),
@@ -474,6 +485,7 @@ var REGISTROS = (function () {
       piloto: null,
       seguimiento: null,
       anterior_id: anteriorId || null,
+      origen_id: origenId || null,
       archivado: false
     };
   }
@@ -486,7 +498,8 @@ var REGISTROS = (function () {
     if (!texto(x.id, 64) || !ID_OK.test(x.id)) return null;
     if (!MOTOR.PREGUNTAS[x.modo]) return null;
     if (!texto(x.nombre, 120) || !x.nombre.trim()) return null;
-    if (!MOTOR.completa(x.modo, x.respuestas)) return null;
+    if (x.origen_id != null && !(x.modo === "tareas" && texto(x.origen_id, 64) && ID_OK.test(x.origen_id))) return null;
+    if (!MOTOR.completa(x.modo, x.respuestas, x.origen_id ? { importante: true } : null)) return null;
     if (MOTOR.POR_MODO[x.modo].indexOf(x.resultado) < 0) return null;
     if (!texto(x.motivo, 300)) return null;
     if (!texto(x.creado_en, 40) || isNaN(Date.parse(x.creado_en))) return null;
@@ -517,7 +530,7 @@ var REGISTROS = (function () {
       version_reglas: texto(x.version_reglas, 40) ? x.version_reglas : "desconocida",
       nota: texto(x.nota, 2000) ? x.nota : "",
       revisar_en: x.revisar_en || null, decision: x.decision || null, valoracion: x.valoracion || null,
-      piloto: piloto, seguimiento: seguimiento, anterior_id: x.anterior_id || null, archivado: x.archivado === true
+      piloto: piloto, seguimiento: seguimiento, anterior_id: x.anterior_id || null, origen_id: x.origen_id || null, archivado: x.archivado === true
     };
   }
 
@@ -560,6 +573,12 @@ var REGISTROS = (function () {
     var hijos = lista.filter(function (x) { return x.anterior_id === id; });
     hijos.sort(function (a, b) { return a.creado_en < b.creado_en ? 1 : -1; });
     return hijos[0] || null;
+  }
+  /* La tarea "¿Cuándo lo hago?" que salió de una PRUEBA, si existe. */
+  function tareaDe(lista, id) {
+    var t = lista.filter(function (x) { return x.origen_id === id; });
+    t.sort(function (a, b) { return a.creado_en < b.creado_en ? -1 : 1; });
+    return t[0] || null;
   }
   /* Habilitada si no tiene fecha o la fecha ya llegó. Nunca aprueba sola. */
   function puedeReevaluar(r, hoy) { var f = fechaRevision(r); return !f || f <= hoy; }
@@ -632,7 +651,7 @@ var REGISTROS = (function () {
   return {
     DECISIONES: DECISIONES, VALORACIONES: VALORACIONES, fechaLocal: fechaLocal, sumarDias: sumarDias,
     crear: crear, validar: validar, exportar: exportar, leerRespaldo: leerRespaldo, fusionar: fusionar,
-    fechaRevision: fechaRevision, reevaluadoPor: reevaluadoPor, puedeReevaluar: puedeReevaluar, pendientes: pendientes,
+    fechaRevision: fechaRevision, reevaluadoPor: reevaluadoPor, tareaDe: tareaDe, puedeReevaluar: puedeReevaluar, pendientes: pendientes,
     almacen: almacen, almacenLocal: almacenLocal
   };
 })();
@@ -658,10 +677,10 @@ var REGISTROS = (function () {
   function icono(nombre) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICONOS[nombre] + "</svg>"; }
   var TXT_RESP = { yes: "Sí", unknown: "No sé", no: "No" };
   var BOTON = {
-    PRUEBA: "Guardar y definir la prueba", COMPRA_RAZONABLE: "Guardar", ACLARA: "Guardar y aclarar la duda",
+    PRUEBA: "Define cuándo lo harás →", COMPRA_RAZONABLE: "Guardar", ACLARA: "Guardar y aclarar la duda",
     ESPERA: "Guardar y revisar en 7 días", PAUSA: "Guardar y revisar en 30 días",
     USA_LO_QUE_TIENES: "Guardar y probar con lo que tengo", NO_AVANZAR: "Guardar y archivar por ahora", NO_COMPRAR_AHORA: "Guardar y postergar",
-    HACER: "Guardar y hacerlo hoy", PROGRAMAR: "Guardar y ponerle fecha", DELEGAR: "Guardar y asignarlo", ELIMINAR: "Guardar y sacarlo de la lista"
+    HACER: "Guardar y ponerle fecha", PROGRAMAR: "Guardar y ponerle fecha", DELEGAR: "Guardar y asignarlo", ELIMINAR: "Guardar y sacarlo de la lista"
   };
   var PLACEHOLDER = { negocio: "Ej.: un software de facturación", personal: "Ej.: audífonos con cancelación de ruido", tareas: "Ej.: actualizar fotos de la web" };
   function vacias(modo) { var n = modo ? MOTOR.PREGUNTAS[modo].length : 5, a = []; for (var i = 0; i < n; i++) a.push(null); return a; }
@@ -672,7 +691,15 @@ var REGISTROS = (function () {
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function nombreModo(m) { return { negocio: "Trabajo", personal: "Compras personales", tareas: "Tareas" }[m] || m; }
 
-  var estado = { modo: null, respuestas: [null, null, null, null, null], anterior: null, resultado: null, guardado: null };
+  // origen: la PRUEBA de Trabajo que abrió "¿Cuándo lo hago?". Mientras exista, Tareas pregunta solo la urgencia.
+  var estado = { modo: null, respuestas: [null, null, null, null, null], anterior: null, origen: null, resultado: null, guardado: null };
+  function visibles() {
+    var n = estado.modo ? MOTOR.PREGUNTAS[estado.modo].length : 0, a = [];
+    for (var i = 0; i < n; i++) if (!(estado.origen && i < 2)) a.push(i);
+    return a;
+  }
+  function opcionesMotor() { return estado.origen ? { importante: true } : null; }
+  function chipResp(v) { return v ? '<span class="chip ' + v + '">' + TXT_RESP[v] + "</span>" : '<span class="chip">No se preguntó</span>'; }
   var registros = [];
   var store = null;      // null = todavía conectando o sin almacenamiento
   var storeListo = false;
@@ -692,8 +719,9 @@ var REGISTROS = (function () {
     if (!estado.modo) { ol.innerHTML = '<li class="empty">Elige ' + nombreModo("negocio") + ', Compras personales o Tareas para ver las preguntas.</li>'; return; }
     $("nombre").placeholder = PLACEHOLDER[estado.modo];
     var valores = MOTOR.VALORES_MODO[estado.modo];
-    ol.innerHTML = MOTOR.PREGUNTAS[estado.modo].map(function (q, i) {
-      return '<li class="q"><fieldset><legend><b>' + (i + 1) + "</b><span>" + esc(q) + '</span></legend><div class="opts' + (valores.length === 2 ? " dos" : "") + '">' +
+    ol.innerHTML = visibles().map(function (i, n) {
+      var q = MOTOR.PREGUNTAS[estado.modo][i];
+      return '<li class="q"><fieldset><legend><b>' + (n + 1) + "</b><span>" + esc(q) + '</span></legend><div class="opts' + (valores.length === 2 ? " dos" : "") + '">' +
         valores.map(function (v) {
           var id = "q" + i + "-" + v;
           return '<label for="' + id + '"><input type="radio" id="' + id + '" name="q' + i + '" value="' + v + '"' + (estado.respuestas[i] === v ? " checked" : "") + "><span>" + TXT_RESP[v] + "</span></label>";
@@ -702,7 +730,7 @@ var REGISTROS = (function () {
   }
 
   function actualizarBoton() {
-    var faltan = estado.respuestas.filter(function (r) { return r === null; }).length;
+    var faltan = visibles().filter(function (i) { return estado.respuestas[i] === null; }).length;
     var sinNombre = !$("nombre").value.trim();
     var msgs = [];
     if (!estado.modo) msgs.push("Elige un modo");
@@ -726,7 +754,7 @@ var REGISTROS = (function () {
       (res.otras.length ? '<details><summary>Otras objeciones (' + res.otras.length + ')</summary><ul class="obj">' +
         res.otras.map(function (o) { return "<li>" + esc(o.texto) + ' <span class="muted small">(pregunta ' + (o.pregunta + 1) + ")</span></li>"; }).join("") + "</ul></details>" : "") +
       '<details><summary>Tus respuestas</summary><ul class="ans">' +
-        preguntas.map(function (q, i) { return "<li><span>" + (i + 1) + ". " + esc(q) + '</span><span class="chip ' + respuestas[i] + '">' + TXT_RESP[respuestas[i]] + "</span></li>"; }).join("") +
+        preguntas.map(function (q, i) { return "<li><span>" + (i + 1) + ". " + esc(q) + "</span>" + chipResp(respuestas[i]) + "</li>"; }).join("") +
       "</ul></details>";
   }
 
@@ -736,14 +764,14 @@ var REGISTROS = (function () {
     }
     return '<div class="matriz" role="img" aria-label="Matriz de Eisenhower: tu tarea cae en ' + esc(MOTOR.RESULTADOS[codigo].etiqueta) + '">' +
       '<span></span><span class="mx-h">Urgente</span><span class="mx-h">No urgente</span>' +
-      '<span class="mx-v">Importante</span>' + celda("HACER", "q-hacer", "tú, hoy") + celda("PROGRAMAR", "q-programar", "ponle fecha") +
+      '<span class="mx-v">Importante</span>' + celda("HACER", "q-hacer", "antes de que venza") + celda("PROGRAMAR", "q-programar", "ponle fecha") +
       '<span class="mx-v">No importante</span>' + celda("DELEGAR", "q-delegar", "pásaselo a alguien") + celda("ELIMINAR", "q-eliminar", "sácalo de la lista") +
       "</div>";
   }
 
   function verResultado() {
     var res;
-    try { res = MOTOR.evaluar(estado.modo, estado.respuestas); } catch (e) { actualizarBoton(); return; }
+    try { res = MOTOR.evaluar(estado.modo, estado.respuestas, opcionesMotor()); } catch (e) { actualizarBoton(); return; }
     estado.resultado = res; estado.guardado = null;
     pintarResultado();
     $("resultado").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -790,20 +818,37 @@ var REGISTROS = (function () {
 
   function extraTrasGuardar(reg) {
     if (reg.resultado === "PRUEBA") return formPiloto(reg);
-    if (reg.resultado === "COMPRA_RAZONABLE" || reg.resultado === "HACER") return botonesDecision(reg);
-    if (reg.resultado === "PROGRAMAR" || reg.resultado === "DELEGAR") return formSeguimiento(reg);
+    if (reg.resultado === "COMPRA_RAZONABLE") return botonesDecision(reg);
+    if (reg.resultado === "HACER" || reg.resultado === "PROGRAMAR" || reg.resultado === "DELEGAR") return formSeguimiento(reg);
     return "";
   }
+
+  /* Tras una PRUEBA de Trabajo: abre Tareas como "¿Cuándo lo hago?", con el mismo nombre y la importancia en Sí. */
+  function abrirCuando(prueba) {
+    var ya = REGISTROS.tareaDe(registros, prueba.id);
+    if (ya) { seleccion = ya.id; confirmarBorrar = null; cambiarVista("historial"); var c = $("det-card"); if (c) c.scrollIntoView({ block: "start" }); return; }
+    estado.modo = "tareas"; estado.origen = prueba; estado.anterior = null;
+    estado.respuestas = ["yes", null, null, null];
+    $("modo-tareas").checked = true; $("nombre").value = prueba.nombre;
+    $("titulo-cuando").hidden = false;
+    var info = $("reeval-info");
+    info.textContent = "«" + prueba.nombre + "» quedó guardado como Prueba de " + nombreModo("negocio") + ". La importancia ya está en Sí: responde solo qué tan urgente es.";
+    info.hidden = false;
+    limpiarResultado(); pintarPreguntas(); actualizarBoton(); cambiarVista("evaluar");
+    window.scrollTo({ top: 0 });
+  }
+  function salirDeCuando() { estado.origen = null; $("titulo-cuando").hidden = true; }
 
   function guardarEvaluacion() {
     var btn = $("btn-guardar");
     var reg;
-    try { reg = REGISTROS.crear(estado.modo, $("nombre").value, estado.respuestas, new Date(), estado.anterior && estado.anterior.id); }
+    try { reg = REGISTROS.crear(estado.modo, $("nombre").value, estado.respuestas, new Date(), estado.anterior && estado.anterior.id, estado.origen && estado.origen.id); }
     catch (e) { aviso("Falta completar la evaluación antes de guardar.", "err"); return; }
     reg.nota = ($("nota").value || "").trim().slice(0, 2000);
     btn.disabled = true; btn.textContent = "Guardando…";
     store.guardar(reg).then(function (leido) {
       estado.guardado = leido; aviso("");
+      if (leido.resultado === "PRUEBA") return abrirCuando(leido);
       pintarResultado();
     }).catch(function (e) {
       btn.disabled = false; btn.textContent = BOTON[estado.resultado.codigo];
@@ -819,14 +864,19 @@ var REGISTROS = (function () {
   }
 
   function nuevaEvaluacion(conservarModo) {
+    salirDeCuando();
     estado.respuestas = vacias(estado.modo); estado.anterior = null;
-    if (!conservarModo) { estado.modo = null; $("modo-negocio").checked = false; $("modo-personal").checked = false; }
+    if (!conservarModo) { estado.modo = null; $("modo-negocio").checked = false; $("modo-personal").checked = false; $("modo-tareas").checked = false; }
     $("nombre").value = ""; $("reeval-info").hidden = true;
     limpiarResultado(); pintarPreguntas(); actualizarBoton();
   }
 
   function reevaluar(reg) {
-    estado.modo = reg.modo; estado.respuestas = vacias(estado.modo); estado.anterior = reg;
+    // Una tarea que salió de una PRUEBA sigue con la importancia en Sí al reevaluarla.
+    var origen = reg.origen_id ? registros.filter(function (x) { return x.id === reg.origen_id; })[0] || null : null;
+    salirDeCuando();
+    estado.modo = reg.modo; estado.origen = origen; estado.respuestas = origen ? ["yes", null, null, null] : vacias(estado.modo); estado.anterior = reg;
+    $("titulo-cuando").hidden = !origen;
     $("modo-" + reg.modo).checked = true; $("nombre").value = reg.nombre;
     var info = $("reeval-info");
     info.textContent = "Reevaluando «" + reg.nombre + "» (antes: " + MOTOR.RESULTADOS[reg.resultado].etiqueta + ", " + fechaCorta(reg.creado_en) + "). La evaluación anterior se conserva.";
@@ -889,11 +939,20 @@ var REGISTROS = (function () {
       '<p class="meta"><span>' + nombreModo(r.modo) + "</span><span>" + fechaCorta(r.creado_en) + "</span><span>Reglas " + esc(r.version_reglas) + "</span></p>" +
       '<div class="res ' + res.tono + '"><div class="res-head">' + icono(res.icono) + '<span class="res-label" style="font-size:1.2rem">' + esc(res.etiqueta) + '</span></div><p class="res-motivo">' + esc(r.motivo) + "</p>" +
       (f ? '<p class="res-accion">Revisión: ' + fechaCorta(f) + (f <= hoyStr ? " (ya se puede reevaluar)" : "") + "</p>" : "") + "</div>" +
-      '<details><summary>Respuestas</summary><ul class="ans">' + preguntas.map(function (q, i) { return "<li><span>" + (i + 1) + ". " + esc(q) + '</span><span class="chip ' + r.respuestas[i] + '">' + TXT_RESP[r.respuestas[i]] + "</span></li>"; }).join("") + "</ul></details>";
+      '<details><summary>Respuestas</summary><ul class="ans">' + preguntas.map(function (q, i) { return "<li><span>" + (i + 1) + ". " + esc(q) + "</span>" + chipResp(r.respuestas[i]) + "</li>"; }).join("") + "</ul></details>";
     if (anterior || r.anterior_id) h += '<p class="small">Viene de: ' + (anterior ? '<button class="link" data-abrir="' + esc(anterior.id) + '">' + esc(MOTOR.RESULTADOS[anterior.resultado].etiqueta) + " del " + fechaCorta(anterior.creado_en) + "</button>" : "una evaluación eliminada") + "</p>";
+    if (r.origen_id) {
+      var origen = registros.filter(function (x) { return x.id === r.origen_id; })[0];
+      h += '<p class="small">Sale de: ' + (origen ? '<button class="link" data-abrir="' + esc(origen.id) + '">Prueba de ' + nombreModo(origen.modo) + " del " + fechaCorta(origen.creado_en) + "</button>" : "una evaluación eliminada") + "</p>";
+    }
     if (hijo) h += '<p class="small">Reevaluado: <button class="link" data-abrir="' + esc(hijo.id) + '">' + esc(MOTOR.RESULTADOS[hijo.resultado].etiqueta) + " del " + fechaCorta(hijo.creado_en) + "</button></p>";
-    if (r.resultado === "PRUEBA") h += formPiloto(r);
-    if (r.resultado === "PROGRAMAR" || r.resultado === "DELEGAR") h += formSeguimiento(r);
+    if (r.resultado === "PRUEBA") {
+      var tarea = REGISTROS.tareaDe(registros, r.id);
+      h += tarea ? '<p class="small">¿Cuándo lo hago?: <button class="link" data-abrir="' + esc(tarea.id) + '">' + esc(MOTOR.RESULTADOS[tarea.resultado].etiqueta) + (tarea.seguimiento && tarea.seguimiento.fecha ? ", " + fechaCorta(tarea.seguimiento.fecha) : "") + "</button></p>"
+        : '<button class="btn" data-cuando="' + esc(r.id) + '">' + esc(BOTON.PRUEBA) + "</button>";
+      h += formPiloto(r);
+    }
+    if (r.resultado === "HACER" || r.resultado === "PROGRAMAR" || r.resultado === "DELEGAR") h += formSeguimiento(r);
     if (r.modo === "tareas") h += matriz(r.resultado);
     h += botonesDecision(r).replace("<p class=\"small muted\">Tu decisión queda separada de la recomendación. Puedes registrarla después desde el historial.</p>", "");
     if (r.modo !== "tareas") h += '<div class="card"><span class="lbl">¿Valió la pena? (opcional)</span><div class="choice" data-campo="valoracion" data-id="' + esc(r.id) + '">' +
@@ -963,7 +1022,7 @@ var REGISTROS = (function () {
 
   document.querySelectorAll('input[name="modo"]').forEach(function (el) {
     el.addEventListener("change", function () {
-      if (estado.modo !== el.value) { estado.modo = el.value; estado.respuestas = vacias(estado.modo); limpiarResultado(); pintarPreguntas(); }
+      if (estado.modo !== el.value) { if (estado.origen) { salirDeCuando(); $("reeval-info").hidden = true; } estado.modo = el.value; estado.respuestas = vacias(estado.modo); limpiarResultado(); pintarPreguntas(); }
       actualizarBoton();
     });
   });
@@ -998,6 +1057,7 @@ var REGISTROS = (function () {
       cambio[grupo.dataset.campo] = actual ? null : t.dataset.valor;
       return actualizar(grupo.dataset.id, cambio, "Guardado.").then(function (ok) { if (ok) { if (estado.guardado) pintarResultado(); pintarHistorial(); } });
     }
+    if (t.dataset.cuando) { var rp = registros.filter(function (x) { return x.id === t.dataset.cuando; })[0]; if (rp) abrirCuando(rp); return; }
     if (t.dataset.abrir) { seleccion = t.dataset.abrir; confirmarBorrar = null; pintarDetalle(); var c = $("det-card"); if (c) c.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
     if (t.hasAttribute("data-cerrar")) { seleccion = null; pintarDetalle(); return; }
     if (t.dataset.nota) return actualizar(t.dataset.nota, { nota: $("d-nota").value.trim().slice(0, 2000) }, "Nota guardada.").then(function (ok) { if (ok) pintarHistorial(); });

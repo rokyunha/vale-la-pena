@@ -1,5 +1,5 @@
 /* Sin internet: guarda la app la primera vez. La página se pide primero a la red para recibir mejoras. */
-const CACHE = "vale-la-pena-ba43704fe5";
+const CACHE = "vale-la-pena-3c4dd80103";
 const BASE = ["./", "index.html", "manifest.webmanifest", "icono-192.png", "icono-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(BASE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
